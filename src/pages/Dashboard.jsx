@@ -27,12 +27,17 @@ export default function Dashboard() {
                             Dashboard
                         </h1>
                         <p className="text-slate-400 mt-1">
-                            Welcome back, {currentUser?.email}
+                            Welcome back, {currentUser?.displayName || currentUser?.email}
                         </p>
                     </div>
-                    <Button variant="secondary" onClick={handleLogout}>
-                        Log Out
-                    </Button>
+                    <div className="flex gap-4">
+                        <Button variant="ghost" onClick={() => navigate('/profile')}>
+                            Profile
+                        </Button>
+                        <Button variant="secondary" onClick={handleLogout}>
+                            Log Out
+                        </Button>
+                    </div>
                 </header>
 
                 {error && <div className="bg-red-500/10 text-red-500 p-4 rounded mb-4">{error}</div>}
