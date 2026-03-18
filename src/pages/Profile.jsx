@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Input from '../components/Input';
 import Button from '../components/Button';
-import { AlertCircle, CheckCircle, ArrowLeft, LogOut } from 'lucide-react';
+import AnimatedBackground from '../components/AnimatedBackground';
+import { AlertCircle, CheckCircle, LogOut, ArrowLeft, User } from 'lucide-react';
 
 export default function Profile() {
     const { currentUser, updateUserProfile, logout } = useAuth();
@@ -18,16 +19,11 @@ export default function Profile() {
     async function handleSubmit(e) {
         e.preventDefault();
         if (loading) return;
-
         setError('');
         setMessage('');
         setLoading(true);
-
         try {
-            await updateUserProfile(currentUser, {
-                displayName: displayName,
-                photoURL: photoURL
-            });
+            await updateUserProfile(currentUser, { displayName, photoURL });
             setMessage('Profile updated successfully');
         } catch (err) {
             setError('Failed to update profile: ' + err.message);
@@ -36,85 +32,93 @@ export default function Profile() {
     }
 
     async function handleLogout() {
-        try {
-            await logout();
-            navigate('/login');
-        } catch {
-            setError('Failed to log out');
-        }
+        try { await logout(); navigate('/login'); }
+        catch { setError('Failed to log out'); }
     }
 
+    const initials = (displayName ? displayName[0] : currentUser?.email?.[0] || 'U').toUpperCase();
+
     return (
-        <div className="min-h-screen bg-slate-900 text-slate-50 p-6">
-            <div className="max-w-2xl mx-auto">
-                <div className="mb-8 flex items-center justify-between">
-                    <Link to="/" className="flex items-center text-slate-400 hover:text-emerald-400 transition-colors">
-                        <ArrowLeft className="w-5 h-5 mr-2" />
-                        Back to Dashboard
-                    </Link>
-                    <Button variant="ghost" onClick={handleLogout} className="!px-3">
-                        <LogOut className="w-5 h-5 mr-2" />
-                        Log Out
-                    </Button>
+        <div className="min-h-screen text-slate-50 relative overflow-hidden">
+            <AnimatedBackground />
+
+            <div className="relative z-10 min-h-screen flex flex-col">
+                {/* Top bar */}
+                <div className="flex items-center justify-between p-6 max-w-2xl mx-auto w-full">
+                    <button
+                        onClick={() => navigate('/dashboard')}
+                        className="flex items-center gap-2 text-slate-400 hover:text-purple-300 transition-colors text-sm"
+                    >
+                        <ArrowLeft size={16} /> Back to Dashboard
+                    </button>
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-red-400
+                                   bg-slate-900/50 hover:bg-red-500/10 border border-white/10 rounded-xl
+                                   text-sm transition-all"
+                    >
+                        <LogOut size={15} /> Log Out
+                    </button>
                 </div>
 
-                <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-2xl p-8">
-                    <h2 className="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-blue-500 bg-clip-text text-transparent mb-6">
-                        Edit Profile
-                    </h2>
+                {/* Profile Card */}
+                <div className="flex-1 flex items-start justify-center px-6 pb-12">
+                    <div className="w-full max-w-md">
+                        <div className="bg-slate-900/60 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl p-8
+                                        ring-1 ring-inset ring-white/5">
 
-                    {error && (
-                        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 text-red-400 text-sm">
-                            <AlertCircle className="w-5 h-5 shrink-0" />
-                            <span>{error}</span>
-                        </div>
-                    )}
-
-                    {message && (
-                        <div className="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-3 text-emerald-400 text-sm">
-                            <CheckCircle className="w-5 h-5 shrink-0" />
-                            <span>{message}</span>
-                        </div>
-                    )}
-
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="flex flex-col items-center mb-6">
-                            <div className="w-24 h-24 rounded-full bg-slate-700 border-2 border-emerald-500/30 flex items-center justify-center overflow-hidden mb-4">
-                                {photoURL ? (
-                                    <img src={photoURL} alt="Profile" className="w-full h-full object-cover" />
-                                ) : (
-                                    <span className="text-4xl text-emerald-500 font-bold">
-                                        {displayName ? displayName.charAt(0).toUpperCase() : currentUser.email.charAt(0).toUpperCase()}
-                                    </span>
-                                )}
+                            {/* Avatar */}
+                            <div className="flex flex-col items-center mb-8">
+                                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500 to-blue-600
+                                                border border-white/10 flex items-center justify-center overflow-hidden mb-3
+                                                shadow-lg shadow-purple-500/20">
+                                    {photoURL ? (
+                                        <img src={photoURL} alt="Profile" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <span className="text-3xl font-bold text-white">{initials}</span>
+                                    )}
+                                </div>
+                                <h2 className="text-xl font-bold bg-gradient-to-r from-purple-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">
+                                    Edit Profile
+                                </h2>
+                                <p className="text-slate-500 text-sm mt-1">{currentUser?.email}</p>
                             </div>
-                            <p className="text-slate-400 text-sm">{currentUser.email}</p>
+
+                            {error && (
+                                <div className="mb-5 p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 text-red-400 text-sm">
+                                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                                    <span>{error}</span>
+                                </div>
+                            )}
+
+                            {message && (
+                                <div className="mb-5 p-3.5 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-start gap-3 text-purple-300 text-sm">
+                                    <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                                    <span>{message}</span>
+                                </div>
+                            )}
+
+                            <form onSubmit={handleSubmit} className="space-y-5">
+                                <Input
+                                    label="Display Name"
+                                    type="text"
+                                    placeholder="Your Name"
+                                    value={displayName}
+                                    onChange={(e) => setDisplayName(e.target.value)}
+                                />
+                                <Input
+                                    label="Photo URL"
+                                    type="url"
+                                    placeholder="https://example.com/avatar.jpg"
+                                    value={photoURL}
+                                    onChange={(e) => setPhotoURL(e.target.value)}
+                                />
+                                <Button type="submit" className="w-full" isLoading={loading}>
+                                    Update Profile
+                                </Button>
+                            </form>
                         </div>
-
-                        <Input
-                            label="Display Name"
-                            type="text"
-                            placeholder="John Doe"
-                            value={displayName}
-                            onChange={(e) => setDisplayName(e.target.value)}
-                        />
-
-                        <Input
-                            label="Photo URL"
-                            type="url"
-                            placeholder="https://example.com/avatar.jpg"
-                            value={photoURL}
-                            onChange={(e) => setPhotoURL(e.target.value)}
-                        />
-
-                        <Button
-                            type="submit"
-                            className="w-full"
-                            isLoading={loading}
-                        >
-                            Update Profile
-                        </Button>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
