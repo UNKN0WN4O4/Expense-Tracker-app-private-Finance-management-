@@ -28,11 +28,16 @@ const AMOUNT_HINTS = [
   'grand total',
   'invoice total',
   'receipt total',
+  'amount',
   'amount due',
+  'balance',
   'amount paid',
   'paid amount',
   'net total',
   'net amount',
+  'subtotal',
+  'bill total',
+  'total payable',
   'total',
   'balance due',
   'mrp',
@@ -40,6 +45,13 @@ const AMOUNT_HINTS = [
   'sale price',
   'selling price',
   'list price',
+];
+const DATE_HINTS = [
+  'date',
+  'bill date',
+  'invoice date',
+  'txn date',
+  'transaction date',
 ];
 const NOTE_STOP_WORDS = [
   'invoice',
@@ -412,6 +424,48 @@ const normalizeYear = (year) => {
 
 const extractDateFromText = (text) => {
   const normalizedText = normalizeReceiptText(text);
+  const lines = normalizedText
+    .split('\n')
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean);
+
+  const extractDateFromLabeledLine = (line) => {
+    const isoMatch = line.match(/\b(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})\b/);
+    if (isoMatch) {
+      return toIsoDate(isoMatch[1], isoMatch[2], isoMatch[3]);
+    }
+
+    const dayFirstMatch = line.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})\b/);
+    if (dayFirstMatch) {
+      const first = Number.parseInt(dayFirstMatch[1], 10);
+      const second = Number.parseInt(dayFirstMatch[2], 10);
+      const year = normalizeYear(dayFirstMatch[3]);
+
+      if (first > 12) {
+        return toIsoDate(year, second, first);
+      }
+
+      if (second > 12) {
+        return toIsoDate(year, first, second);
+      }
+
+      return toIsoDate(year, second, first);
+    }
+
+    return '';
+  };
+
+  for (const hint of DATE_HINTS) {
+    const hintedLine = lines.find((line) => line.toLowerCase().includes(hint));
+    if (!hintedLine) {
+      continue;
+    }
+
+    const hintedDate = extractDateFromLabeledLine(hintedLine);
+    if (hintedDate) {
+      return hintedDate;
+    }
+  }
 
   const isoMatch = normalizedText.match(/\b(\d{4})[\/.-](\d{1,2})[\/.-](\d{1,2})\b/);
   if (isoMatch) {
