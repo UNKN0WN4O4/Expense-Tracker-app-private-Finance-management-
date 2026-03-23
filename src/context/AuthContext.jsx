@@ -74,8 +74,28 @@ export function AuthProvider({ children }) {
         return sendPasswordResetEmail(auth, email);
     }
 
-    function updateUserProfile(user, profile) {
-        return updateProfile(user, profile);
+    async function updateUserProfile(user, profile) {
+        const authProfile = {
+            displayName: profile.displayName ?? user.displayName ?? "",
+        };
+
+        const nextPhotoUrl = profile.photoURL ?? user.photoURL ?? "";
+        if (isRemotePhotoUrl(nextPhotoUrl)) {
+            authProfile.photoURL = nextPhotoUrl;
+        }
+
+        await updateProfile(user, authProfile);
+
+        const nextProfile = await saveUserToFirestore(user, {
+            displayName: authProfile.displayName,
+            photoURL: nextPhotoUrl,
+        });
+
+        setCurrentUser(user);
+        setUserProfile((current) => ({
+            ...(current || {}),
+            ...nextProfile,
+        }));
     }
 
     useEffect(() => {
@@ -115,3 +135,4 @@ export function AuthProvider({ children }) {
         </AuthContext.Provider>
     );
 }
+    const isRemotePhotoUrl = (value) => /^https?:\/\//i.test(value || "");

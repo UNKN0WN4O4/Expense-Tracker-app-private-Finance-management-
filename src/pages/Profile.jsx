@@ -1,20 +1,68 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import AnimatedBackground from '../components/AnimatedBackground';
-import { AlertCircle, CheckCircle, LogOut, ArrowLeft, User } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Camera, CameraOff, CheckCircle, LogOut, Upload, User } from 'lucide-react';
+
+const PROFILE_IMAGE_MAX_DIMENSION = 512;
+
+const resizeImageFileToDataUrl = async (file) => {
+    const imageUrl = URL.createObjectURL(file);
+
+    try {
+        const image = await new Promise((resolve, reject) => {
+            const nextImage = new Image();
+            nextImage.onload = () => resolve(nextImage);
+            nextImage.onerror = () => reject(new Error('Unable to load image.'));
+            nextImage.src = imageUrl;
+        });
+
+        const longestSide = Math.max(image.width, image.height);
+        const scale = longestSide > PROFILE_IMAGE_MAX_DIMENSION
+            ? PROFILE_IMAGE_MAX_DIMENSION / longestSide
+            : 1;
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        return canvas.toDataURL('image/jpeg', 0.9);
+    } finally {
+        URL.revokeObjectURL(imageUrl);
+    }
+};
 
 export default function Profile() {
-    const { currentUser, updateUserProfile, logout } = useAuth();
+    const { currentUser, userProfile, updateUserProfile, logout } = useAuth();
     const navigate = useNavigate();
 
-    const [displayName, setDisplayName] = useState(currentUser?.displayName || '');
-    const [photoURL, setPhotoURL] = useState(currentUser?.photoURL || '');
+    const [displayName, setDisplayName] = useState(currentUser?.displayName || userProfile?.displayName || '');
+    const [photoURL, setPhotoURL] = useState(currentUser?.photoURL || userProfile?.photoURL || '');
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
+    const [cameraError, setCameraError] = useState('');
+    const [isStartingCamera, setIsStartingCamera] = useState(false);
+    const fileInputRef = useRef(null);
+    const videoRef = useRef(null);
+    const streamRef = useRef(null);
+
+    useEffect(() => {
+        setDisplayName(currentUser?.displayName || userProfile?.displayName || '');
+        setPhotoURL(currentUser?.photoURL || userProfile?.photoURL || '');
+    }, [currentUser?.displayName, currentUser?.photoURL, userProfile?.displayName, userProfile?.photoURL]);
+
+    useEffect(() => () => {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+        }
+    }, []);
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -34,6 +82,98 @@ export default function Profile() {
     async function handleLogout() {
         try { await logout(); navigate('/login'); }
         catch { setError('Failed to log out'); }
+    }
+
+    async function handlePhotoUpload(event) {
+        const file = event.target.files?.[0];
+        if (!file) {
+            return;
+        }
+
+        if (!file.type.startsWith('image/')) {
+            setError('Please choose an image file for your profile photo.');
+            event.target.value = '';
+            return;
+        }
+
+        try {
+            setError('');
+            const nextPhotoUrl = await resizeImageFileToDataUrl(file);
+            setPhotoURL(nextPhotoUrl);
+            setMessage('Profile photo ready to save.');
+        } catch {
+            setError('Unable to process this image. Please try another one.');
+        } finally {
+            event.target.value = '';
+        }
+    }
+
+    function closeCamera() {
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+        }
+        setIsCameraOpen(false);
+        setIsStartingCamera(false);
+        setCameraError('');
+    }
+
+    async function openCamera() {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            setCameraError('Camera access is not supported in this browser.');
+            setIsCameraOpen(true);
+            return;
+        }
+
+        setCameraError('');
+        setIsCameraOpen(true);
+        setIsStartingCamera(true);
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'user' } },
+                audio: false,
+            });
+
+            streamRef.current = stream;
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+                await videoRef.current.play();
+            }
+        } catch {
+            setCameraError('Unable to access the camera. Please allow permission or upload a photo instead.');
+        } finally {
+            setIsStartingCamera(false);
+        }
+    }
+
+    async function capturePhoto() {
+        if (!videoRef.current) {
+            return;
+        }
+
+        const canvas = document.createElement('canvas');
+        const width = videoRef.current.videoWidth || 720;
+        const height = videoRef.current.videoHeight || 720;
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        context.drawImage(videoRef.current, 0, 0, width, height);
+
+        const blob = await new Promise((resolve) => {
+            canvas.toBlob(resolve, 'image/jpeg', 0.92);
+        });
+
+        if (!blob) {
+            setError('Unable to capture a photo right now.');
+            return;
+        }
+
+        const capturedFile = new File([blob], `profile-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+        const nextPhotoUrl = await resizeImageFileToDataUrl(capturedFile);
+        setPhotoURL(nextPhotoUrl);
+        setMessage('Camera photo ready to save.');
+        closeCamera();
     }
 
     const initials = (displayName ? displayName[0] : currentUser?.email?.[0] || 'U').toUpperCase();
@@ -99,6 +239,36 @@ export default function Profile() {
                             )}
 
                             <form onSubmit={handleSubmit} className="space-y-5">
+                                <div className="space-y-3">
+                                    <p className="ml-1 text-sm font-medium text-slate-400">Profile Photo</p>
+                                    <div className="flex flex-wrap gap-3">
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={handlePhotoUpload}
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            className="gap-2"
+                                            onClick={() => fileInputRef.current?.click()}
+                                        >
+                                            <Upload size={16} />
+                                            Upload Photo
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            className="gap-2"
+                                            onClick={openCamera}
+                                        >
+                                            <Camera size={16} />
+                                            Take Photo
+                                        </Button>
+                                    </div>
+                                </div>
                                 <Input
                                     label="Display Name"
                                     type="text"
@@ -121,6 +291,58 @@ export default function Profile() {
                     </div>
                 </div>
             </div>
+
+            {isCameraOpen && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900/95 p-6 shadow-2xl shadow-black/50">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <h4 className="text-lg font-semibold text-white">Capture Profile Photo</h4>
+                                <p className="mt-1 text-sm text-slate-400">Take a photo and use it as your avatar.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeCamera}
+                                className="rounded-xl border border-white/10 bg-white/5 p-3 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                            >
+                                <CameraOff size={18} />
+                            </button>
+                        </div>
+
+                        <div className="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
+                            {cameraError ? (
+                                <div className="flex min-h-[320px] items-center justify-center p-6 text-center text-sm text-red-300">
+                                    {cameraError}
+                                </div>
+                            ) : (
+                                <video
+                                    ref={videoRef}
+                                    autoPlay
+                                    playsInline
+                                    muted
+                                    className="max-h-[60vh] w-full bg-black object-cover"
+                                />
+                            )}
+                        </div>
+
+                        <div className="mt-5 flex flex-wrap gap-3">
+                            <Button
+                                type="button"
+                                className="gap-2"
+                                onClick={capturePhoto}
+                                isLoading={isStartingCamera}
+                                disabled={Boolean(cameraError)}
+                            >
+                                <Camera size={16} />
+                                {isStartingCamera ? 'Starting camera...' : 'Capture Photo'}
+                            </Button>
+                            <Button type="button" variant="secondary" onClick={closeCamera}>
+                                Cancel
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

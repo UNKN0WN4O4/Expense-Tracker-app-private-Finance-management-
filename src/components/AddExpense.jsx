@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Camera,
+  CameraOff,
   ChevronDown,
   Check,
   FileSearch,
@@ -33,6 +35,11 @@ const AMOUNT_HINTS = [
   'net amount',
   'total',
   'balance due',
+  'mrp',
+  'price',
+  'sale price',
+  'selling price',
+  'list price',
 ];
 const NOTE_STOP_WORDS = [
   'invoice',
@@ -199,6 +206,8 @@ const extractAmountFromInvoiceTotals = (text) => {
     /\bpaid amount\b/i,
     /\bnet total\b/i,
     /\bnet amount\b/i,
+    /\bmrp\b/i,
+    /\b(?:sale price|selling price|list price|price)\b/i,
   ];
 
   for (const pattern of priorityPatterns) {
@@ -765,12 +774,17 @@ export default function AddExpense({
   const [ocrText, setOcrText] = useState('');
   const [receiptFileName, setReceiptFileName] = useState(initialExpense?.receiptFileName || '');
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
   const [categoryQuery, setCategoryQuery] = useState('');
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const timeoutRefs = useRef(new Map());
   const fileInputRef = useRef(null);
   const categoryFieldRef = useRef(null);
   const ocrProgressUpdateRef = useRef({ progress: 0, status: '', time: 0 });
+  const videoRef = useRef(null);
+  const cameraStreamRef = useRef(null);
 
   useEffect(() => {
     const selectedCategory = categories.find((category) => category.id === (initialExpense?.categoryId || initialExpense?.category));
@@ -797,6 +811,10 @@ export default function AddExpense({
   useEffect(() => () => {
     timeoutRefs.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
     timeoutRefs.current.clear();
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -902,8 +920,7 @@ export default function AddExpense({
     });
   };
 
-  const handleReceiptUpload = async (event) => {
-    const file = event.target.files?.[0];
+  const processReceiptFile = async (file, fileName = file?.name || 'Camera capture') => {
     if (!file) {
       return;
     }
@@ -911,12 +928,11 @@ export default function AddExpense({
     const isSupportedType = file.type.startsWith('image/') || file.type === 'application/pdf';
     if (!isSupportedType) {
       setSubmitError('Please upload a receipt or invoice as an image or PDF.');
-      event.target.value = '';
       return;
     }
 
     setSubmitError('');
-    setReceiptFileName(file.name);
+    setReceiptFileName(fileName);
     setIsProcessingReceipt(true);
     setOcrProgress(0);
     setOcrStatus('Preparing file for OCR...');
@@ -981,8 +997,82 @@ export default function AddExpense({
       setSubmitError('Unable to scan this receipt right now. Please try a clearer image or PDF.');
     } finally {
       setIsProcessingReceipt(false);
-      event.target.value = '';
     }
+  };
+
+  const handleReceiptUpload = async (event) => {
+    const file = event.target.files?.[0];
+    await processReceiptFile(file, file?.name);
+    event.target.value = '';
+  };
+
+  const closeCamera = () => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+    setIsCameraOpen(false);
+    setIsStartingCamera(false);
+    setCameraError('');
+  };
+
+  const openCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera access is not supported in this browser.');
+      setIsCameraOpen(true);
+      return;
+    }
+
+    setCameraError('');
+    setIsCameraOpen(true);
+    setIsStartingCamera(true);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+        },
+        audio: false,
+      });
+
+      cameraStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+    } catch {
+      setCameraError('Unable to access the camera. Please allow permission or use upload instead.');
+    } finally {
+      setIsStartingCamera(false);
+    }
+  };
+
+  const captureReceiptFromCamera = async () => {
+    if (!videoRef.current) {
+      return;
+    }
+
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    context.drawImage(video, 0, 0, width, height);
+
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.92);
+    });
+
+    if (!blob) {
+      setSubmitError('Unable to capture a photo from the camera.');
+      return;
+    }
+
+    const capturedFile = new File([blob], `camera-receipt-${Date.now()}.jpg`, { type: 'image/jpeg' });
+    closeCamera();
+    await processReceiptFile(capturedFile, 'Camera receipt');
   };
 
   const clearReceiptState = () => {
@@ -1120,6 +1210,17 @@ export default function AddExpense({
                 >
                   {isProcessingReceipt ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
                   {isProcessingReceipt ? 'Scanning...' : 'Upload Receipt'}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="gap-2"
+                  onClick={openCamera}
+                  disabled={isProcessingReceipt}
+                >
+                  <Camera size={18} />
+                  Open Camera
                 </Button>
 
                 {receiptFileName && (
@@ -1317,6 +1418,58 @@ export default function AddExpense({
           </div>
         </form>
       </div>
+
+      {isCameraOpen ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-slate-900/95 p-6 shadow-2xl shadow-black/50">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h4 className="text-lg font-semibold text-white">Capture Receipt</h4>
+                <p className="mt-1 text-sm text-slate-400">Take a photo and send it straight into OCR.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCamera}
+                className="rounded-xl border border-white/10 bg-white/5 p-3 text-slate-300 transition hover:bg-white/10 hover:text-white"
+              >
+                <CameraOff size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70">
+              {cameraError ? (
+                <div className="flex min-h-[320px] items-center justify-center p-6 text-center text-sm text-red-300">
+                  {cameraError}
+                </div>
+              ) : (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="max-h-[65vh] w-full bg-black object-cover"
+                />
+              )}
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button
+                type="button"
+                className="gap-2"
+                onClick={captureReceiptFromCamera}
+                disabled={isStartingCamera || Boolean(cameraError)}
+              >
+                {isStartingCamera ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+                {isStartingCamera ? 'Starting camera...' : 'Capture and Scan'}
+              </Button>
+
+              <Button type="button" variant="secondary" onClick={closeCamera}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
