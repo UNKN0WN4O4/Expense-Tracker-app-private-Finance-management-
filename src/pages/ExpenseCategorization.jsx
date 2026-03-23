@@ -2,17 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AnimatedBackground from '../components/AnimatedBackground';
+import AddExpenseDialog from '../components/AddExpenseDialog';
 import { db } from '../firebase';
 import { 
   doc, 
   setDoc, 
   getDoc, 
   collection,
-  addDoc,
   deleteDoc,
   updateDoc,
   query,
-  where,
   onSnapshot,
   serverTimestamp 
 } from 'firebase/firestore';
@@ -97,12 +96,13 @@ const SectionHeading = ({ children }) => (
 
 // ── Main Component ───────────────────────────────────────────────────────────
 const ExpenseCategorization = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, userProfile } = useAuth();
+  const location = useLocation();
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [activeTab,               setActiveTab]               = useState('categories');
+  const [activeTab,               setActiveTab]               = useState(location.pathname === '/expenses' ? 'expenses' : 'categories');
   const [showAddCategory,         setShowAddCategory]         = useState(false);
   const [showAddExpense,          setShowAddExpense]          = useState(false);
   const [editingCategory,         setEditingCategory]         = useState(null);
@@ -113,7 +113,7 @@ const ExpenseCategorization = () => {
   const [newCategoryColor,        setNewCategoryColor]        = useState(COLORS[0]);
   const [newCategoryIcon,         setNewCategoryIcon]         = useState('🏷️');
   const [categoryError,           setCategoryError]           = useState('');
-  const [newExpense, setNewExpense] = useState({ description: '', amount: '', categoryId: '', date: new Date().toISOString().split('T')[0] });
+  const getExpenseCategoryId = (expense) => expense.category || expense.categoryId || 'uncategorized';
 
   // ── Load data from Firebase on mount ──────────────────────────────────────
   useEffect(() => {
@@ -150,6 +150,17 @@ const ExpenseCategorization = () => {
 
     return () => unsubscribe();
   }, [currentUser]);
+
+  useEffect(() => {
+    if (location.pathname === '/expenses') {
+      setActiveTab('expenses');
+      return;
+    }
+
+    if (location.pathname === '/expense-categorization') {
+      setActiveTab('categories');
+    }
+  }, [location.pathname]);
 
   // ── Save categories to Firebase ───────────────────────────────────────────
   const saveCategories = async (newCategories) => {
@@ -217,10 +228,10 @@ const ExpenseCategorization = () => {
       await saveCategories(updatedCategories);
       
       // Update expenses that used this category
-      const expensesToUpdate = expenses.filter(e => e.categoryId === id);
+      const expensesToUpdate = expenses.filter(e => getExpenseCategoryId(e) === id);
       for (const exp of expensesToUpdate) {
         const expRef = doc(db, 'users', currentUser.uid, 'expenses', exp.id);
-        await updateDoc(expRef, { categoryId: 'uncategorized' });
+        await updateDoc(expRef, { category: 'uncategorized', categoryId: 'uncategorized' });
       }
     }
   };
@@ -231,22 +242,8 @@ const ExpenseCategorization = () => {
   };
 
   // ── Expense CRUD ───────────────────────────────────────────────────────────
-  const handleAddExpense = async () => {
-    if (!newExpense.description || !newExpense.amount || !newExpense.categoryId || !currentUser) return;
-    
-    const expenseData = {
-      description: newExpense.description,
-      amount: parseFloat(newExpense.amount),
-      categoryId: newExpense.categoryId,
-      date: newExpense.date,
-      createdAt: serverTimestamp()
-    };
-
-    await addDoc(collection(db, 'users', currentUser.uid, 'expenses'), expenseData);
-    
-    setNewExpense({ description: '', amount: '', categoryId: '', date: new Date().toISOString().split('T')[0] });
-    setShowAddExpense(false);
-  };
+  const defaultCurrency = userProfile?.preferences?.currency || '₹';
+  const formatAmount = (amount, currency = defaultCurrency) => `${currency}${Number(amount).toFixed(2)}`;
 
   const handleDeleteExpense = async (id) => {
     if (!currentUser) return;
@@ -258,9 +255,10 @@ const ExpenseCategorization = () => {
   const getCatStats    = () => {
     const stats = {};
     expenses.forEach(e => {
-      if (!stats[e.categoryId]) stats[e.categoryId] = { total: 0, count: 0 };
-      stats[e.categoryId].total += e.amount;
-      stats[e.categoryId].count += 1;
+      const categoryId = getExpenseCategoryId(e);
+      if (!stats[categoryId]) stats[categoryId] = { total: 0, count: 0 };
+      stats[categoryId].total += e.amount;
+      stats[categoryId].count += 1;
     });
     return stats;
   };
@@ -269,8 +267,8 @@ const ExpenseCategorization = () => {
   const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
   const chartData     = Object.entries(catStats).map(([id, d]) => ({ name: getCatById(id).name, value: d.total, color: getCatById(id).color })).filter(i => i.value > 0);
 
-  const filteredExpenses = (selectedCategoryFilter === 'all' ? expenses : expenses.filter(e => e.categoryId === selectedCategoryFilter))
-    .filter(e => e.description.toLowerCase().includes(expenseSearch.toLowerCase()));
+  const filteredExpenses = (selectedCategoryFilter === 'all' ? expenses : expenses.filter(e => getExpenseCategoryId(e) === selectedCategoryFilter))
+    .filter(e => (e.note || e.description || '').toLowerCase().includes(expenseSearch.toLowerCase()));
 
   const ICON_OPTS = ['🏷️','🎯','💡','🔥','⭐','🎁','🏋️','📚','🎵','💊','🌿','🚀'];
 
@@ -308,7 +306,7 @@ const ExpenseCategorization = () => {
             {/* Header Stats */}
             <div className="flex gap-3 flex-wrap">
               {[
-                { label: 'Total Spent', value: `₹${totalExpenses.toFixed(2)}`, icon: Wallet,     color: 'purple', border: 'border-purple-500/20', text: 'text-purple-400' },
+                { label: 'Total Spent', value: formatAmount(totalExpenses),    icon: Wallet,     color: 'purple', border: 'border-purple-500/20', text: 'text-purple-400' },
                 { label: 'Categories',  value: categories.length,               icon: Tags,       color: 'blue',   border: 'border-blue-500/20',   text: 'text-blue-400' },
                 { label: 'Transactions',value: expenses.length,                  icon: DollarSign, color: 'indigo', border: 'border-indigo-500/20', text: 'text-indigo-400' },
               ].map(({ label, value, icon: Icon, border, text }) => (
@@ -523,7 +521,7 @@ const ExpenseCategorization = () => {
                             </div>
                             <div className="flex justify-between text-sm">
                               <span className="text-slate-500">{stats.count} expense{stats.count !== 1 ? 's' : ''}</span>
-                              <span className="font-semibold" style={{ color: cat.color }}>₹{stats.total.toFixed(2)}</span>
+                              <span className="font-semibold" style={{ color: cat.color }}>{formatAmount(stats.total)}</span>
                             </div>
                             {pct > 0 && (
                               <p className="text-xs text-slate-500 mt-1 text-right">{pct.toFixed(1)}% of total</p>
@@ -534,7 +532,7 @@ const ExpenseCategorization = () => {
                         {viewMode === 'list' && (
                           <div className="flex items-center gap-4 ml-auto">
                             <span className="text-sm text-slate-400">{stats.count} exp.</span>
-                            <span className="font-semibold" style={{ color: cat.color }}>₹{stats.total.toFixed(2)}</span>
+                            <span className="font-semibold" style={{ color: cat.color }}>{formatAmount(stats.total)}</span>
                           </div>
                         )}
                       </div>
@@ -561,76 +559,13 @@ const ExpenseCategorization = () => {
               </div>
 
               {/* Add Expense Form */}
-              {showAddExpense && (
-                <GlassCard className="p-6 border-blue-500/20">
-                  <h3 className="text-xl font-semibold mb-5 flex items-center gap-2">
-                    <span className="w-1.5 h-5 bg-gradient-to-b from-purple-500 to-blue-600 rounded-full" />
-                    Add New Expense
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {[
-                      { label: 'Description', type: 'text',   placeholder: 'What did you spend on?',         field: 'description' },
-                      { label: 'Amount ($)',  type: 'number', placeholder: '0.00',                          field: 'amount', step: '0.01' },
-                    ].map(({ label, type, placeholder, field, step }) => (
-                      <div key={field}>
-                        <label className="block text-sm font-medium text-slate-300 mb-2">{label}</label>
-                        <input
-                          type={type}
-                          step={step}
-                          value={newExpense[field]}
-                          onChange={e => setNewExpense({ ...newExpense, [field]: e.target.value })}
-                          placeholder={placeholder}
-                          className="w-full px-4 py-3 bg-slate-800/60 border border-white/10 rounded-xl 
-                                     focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 
-                                     text-white placeholder-slate-500 text-sm transition-all"
-                        />
-                      </div>
-                    ))}
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">Category</label>
-                      <select
-                        value={newExpense.categoryId}
-                        onChange={e => setNewExpense({ ...newExpense, categoryId: e.target.value })}
-                        className="w-full px-4 py-3 bg-slate-800/60 border border-white/10 rounded-xl 
-                                   focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 
-                                   text-white text-sm appearance-none cursor-pointer transition-all"
-                      >
-                        <option value="" className="bg-slate-900">Select Category</option>
-                        {categories.map(c => (
-                          <option key={c.id} value={c.id} className="bg-slate-900">{c.icon} {c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-2">Date</label>
-                      <input
-                        type="date"
-                        value={newExpense.date}
-                        onChange={e => setNewExpense({ ...newExpense, date: e.target.value })}
-                        className="w-full px-4 py-3 bg-slate-800/60 border border-white/10 rounded-xl 
-                                   focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 
-                                   text-white text-sm transition-all"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-3 mt-5">
-                    <button
-                      onClick={handleAddExpense}
-                      disabled={!newExpense.description || !newExpense.amount || !newExpense.categoryId}
-                      className="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 
-                                 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-medium text-sm transition-all flex items-center gap-2"
-                    >
-                      <Check size={18} /> Save Expense
-                    </button>
-                    <button
-                      onClick={() => setShowAddExpense(false)}
-                      className="px-6 py-3 bg-slate-800/60 hover:bg-slate-700/60 border border-white/10 rounded-xl font-medium text-sm transition-all"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </GlassCard>
-              )}
+              <AddExpenseDialog
+                isOpen={showAddExpense}
+                categories={categories}
+                defaultCurrency={defaultCurrency}
+                onCancel={() => setShowAddExpense(false)}
+                onSaved={() => setShowAddExpense(false)}
+              />
 
               {/* Filter & Search Bar */}
               <GlassCard className="p-4">
@@ -675,14 +610,14 @@ const ExpenseCategorization = () => {
                     </div>
                   ) : (
                     filteredExpenses.map(exp => {
-                      const cat = getCatById(exp.categoryId);
+                      const cat = getCatById(getExpenseCategoryId(exp));
                       return (
                         <div key={exp.id} className="flex items-center gap-4 p-4 hover:bg-white/[0.02] transition-colors group">
                           <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ backgroundColor: cat.color + '22' }}>
                             {cat.icon}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-white truncate">{exp.description}</h4>
+                            <h4 className="font-medium text-white truncate">{exp.note || exp.description || 'Untitled expense'}</h4>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: cat.color + '30', color: cat.color }}>
                                 {cat.name}
@@ -692,7 +627,7 @@ const ExpenseCategorization = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="text-lg font-bold text-white">₹{exp.amount.toFixed(2)}</span>
+                            <span className="text-lg font-bold text-white">{formatAmount(exp.amount, exp.currency)}</span>
                             <button
                               onClick={() => handleDeleteExpense(exp.id)}
                               className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
@@ -708,7 +643,7 @@ const ExpenseCategorization = () => {
                 {filteredExpenses.length > 0 && (
                   <div className="px-4 py-3 border-t border-white/5 flex justify-between text-sm text-slate-400">
                     <span>{filteredExpenses.length} expense{filteredExpenses.length !== 1 ? 's' : ''}</span>
-                    <span className="font-semibold text-purple-400">₹{filteredExpenses.reduce((s, e) => s + e.amount, 0).toFixed(2)} total</span>
+                    <span className="font-semibold text-purple-400">{formatAmount(filteredExpenses.reduce((s, e) => s + e.amount, 0))} total</span>
                   </div>
                 )}
               </GlassCard>
@@ -750,7 +685,7 @@ const ExpenseCategorization = () => {
                         </Pie>
                         <RechartsTooltip
                           contentStyle={{ backgroundColor: '#0f172a', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '12px', color: '#fff' }}
-                          formatter={v => [`₹${v.toFixed(2)}`, 'Amount']}
+                          formatter={v => [formatAmount(v), 'Amount']}
                         />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', color: '#94a3b8' }} />
                       </PieChart>
@@ -778,7 +713,7 @@ const ExpenseCategorization = () => {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="font-bold text-sm" style={{ color: cat.color }}>₹{data.total.toFixed(2)}</p>
+                                <p className="font-bold text-sm" style={{ color: cat.color }}>{formatAmount(data.total)}</p>
                                 <p className="text-xs text-slate-500">{pct}%</p>
                               </div>
                             </div>
@@ -805,7 +740,7 @@ const ExpenseCategorization = () => {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-5">
                   {categories.map(cat => {
-                    const catExps  = expenses.filter(e => e.categoryId === cat.id);
+                    const catExps  = expenses.filter(e => getExpenseCategoryId(e) === cat.id);
                     const catTotal = catExps.reduce((s, e) => s + e.amount, 0);
                     if (catExps.length === 0) return null;
                     return (
@@ -815,14 +750,14 @@ const ExpenseCategorization = () => {
                           <h4 className="font-semibold text-sm" style={{ color: cat.color }}>{cat.name}</h4>
                           <div className="flex items-center gap-1 ml-auto">
                             <ArrowUpRight size={12} className="text-slate-500" />
-                            <span className="text-xs text-slate-400 font-medium">₹{catTotal.toFixed(2)}</span>
+                            <span className="text-xs text-slate-400 font-medium">{formatAmount(catTotal)}</span>
                           </div>
                         </div>
                         <div className="space-y-2 max-h-36 overflow-y-auto">
                           {catExps.map(exp => (
                             <div key={exp.id} className="flex justify-between text-xs py-0.5">
-                              <span className="text-slate-400 truncate flex-1 mr-2">{exp.description}</span>
-                              <span className="text-white font-medium">${exp.amount.toFixed(2)}</span>
+                              <span className="text-slate-400 truncate flex-1 mr-2">{exp.note || exp.description || 'Untitled expense'}</span>
+                              <span className="text-white font-medium">{formatAmount(exp.amount, exp.currency)}</span>
                             </div>
                           ))}
                         </div>
