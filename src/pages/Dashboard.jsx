@@ -6,6 +6,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import AddExpenseDialog from '../components/AddExpenseDialog';
 import { db } from '../firebase';
 import { DEFAULT_CATEGORIES } from '../components/expense/expenseConfig';
+import BudgetWidget from '../components/BudgetWidget';
 import { 
   LayoutDashboard, Wallet, Tags, PieChart,
   Bell, User, LogOut, Sparkles,
@@ -242,12 +243,8 @@ export default function Dashboard() {
                 title="Reports & Analytics"
                 hint="Add your reports/charts widget here"
               />
-              {/* Budgeting & Notifications — teammate fills this */}
-              <ModuleSlot
-                icon={Bell}
-                title="Budgeting & Alerts"
-                hint="Add your budgeting widget here"
-              />
+              {/* Budgeting & Notifications */}
+              <BudgetWidget />
             </div>
           </section>
 
