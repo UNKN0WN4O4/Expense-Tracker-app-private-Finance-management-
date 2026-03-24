@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import ForgotPassword from './pages/ForgotPassword';
 import Profile from './pages/Profile';
 import ExpenseCategorization from './pages/ExpenseCategorization';
+import Analytics from './pages/Analytics';
 
 // Pages where navbar should be hidden
 const HIDE_NAVBAR_PATHS = ['/login', '/register', '/forgot-password'];
@@ -59,6 +60,14 @@ function AppContent() {
         element={
           <PrivateRoute>
             <ExpenseCategorization />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <PrivateRoute>
+            <Analytics />
           </PrivateRoute>
         }
       />
