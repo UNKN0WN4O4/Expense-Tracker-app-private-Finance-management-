@@ -133,7 +133,7 @@ function getWeeklyReport(expenses) {
 function getCategoryTotals(expenses) {
   const totals = {};
   expenses.forEach(exp => {
-    const catId = exp.categoryId || 'uncategorized';
+    const catId = exp.categoryId || exp.category || 'uncategorized';
     totals[catId] = (totals[catId] || 0) + (exp.amount || 0);
   });
   return totals;
