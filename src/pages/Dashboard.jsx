@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import AnimatedBackground from '../components/AnimatedBackground';
+import { doc, getDoc } from 'firebase/firestore';
+import AddExpenseDialog from '../components/AddExpenseDialog';
+import { db } from '../firebase';
+import { DEFAULT_CATEGORIES } from '../components/expense/expenseConfig';
+import BudgetWidget from '../components/BudgetWidget';
 import { 
   LayoutDashboard, Wallet, Tags, PieChart,
   Bell, User, LogOut, Sparkles,
@@ -21,7 +26,7 @@ const NAV_ITEMS = [
 // ── Quick-access tiles teammates can extend ───────────────────────────────
 const QUICK_TILES = [
   {
-    path: '/expenses',
+    path: '/expense-categorization',
     icon: Wallet,
     iconColor: 'text-blue-400',
     iconBg: 'bg-blue-500/20',
@@ -79,8 +84,29 @@ function ModuleSlot({ icon: Icon, title, hint }) {
 // ── Main Dashboard ─────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [error, setError] = useState('');
-  const { currentUser, logout } = useAuth();
+  const [showAddExpense, setShowAddExpense] = useState(false);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const { currentUser, logout, userProfile } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      if (!currentUser) {
+        return;
+      }
+
+      try {
+        const categorySnapshot = await getDoc(doc(db, 'users', currentUser.uid, 'settings', 'categories'));
+        if (categorySnapshot.exists()) {
+          setCategories(categorySnapshot.data().items || DEFAULT_CATEGORIES);
+        }
+      } catch {
+        setCategories(DEFAULT_CATEGORIES);
+      }
+    };
+
+    loadCategories();
+  }, [currentUser]);
 
   async function handleLogout() {
     setError('');
@@ -95,9 +121,18 @@ export default function Dashboard() {
     return 'Good evening';
   };
 
+  const defaultCurrency = userProfile?.preferences?.currency || '₹';
+
   return (
     <div className="min-h-screen text-slate-50 relative overflow-hidden">
       <AnimatedBackground />
+      <AddExpenseDialog
+        isOpen={showAddExpense}
+        categories={categories}
+        defaultCurrency={defaultCurrency}
+        onCancel={() => setShowAddExpense(false)}
+        onSaved={() => setShowAddExpense(false)}
+      />
 
       <div className="relative z-10 pr-24 p-8">
         <div className="max-w-5xl mx-auto">
@@ -147,7 +182,7 @@ export default function Dashboard() {
                 <Tags size={16} /> Open Categories
               </button>
               <button
-                onClick={() => navigate('/expenses')}
+                onClick={() => setShowAddExpense(true)}
                 className="flex items-center gap-2 px-4 py-2.5 bg-slate-800/60 hover:bg-slate-700/60
                            border border-white/10 rounded-xl text-sm font-medium transition-all"
               >
@@ -166,7 +201,14 @@ export default function Dashboard() {
               {QUICK_TILES.map(({ path, icon: Icon, iconColor, iconBg, border, title, desc }) => (
                 <button
                   key={path}
-                  onClick={() => navigate(path)}
+                  onClick={() => {
+                    if (title === 'Add Expense') {
+                      setShowAddExpense(true);
+                      return;
+                    }
+
+                    navigate(path);
+                  }}
                   className={`group p-5 bg-slate-900/40 backdrop-blur-xl border border-white/8
                                ${border} rounded-3xl text-left transition-all duration-300 hover:-translate-y-0.5
                                hover:shadow-lg hover:bg-slate-900/60`}
@@ -201,12 +243,8 @@ export default function Dashboard() {
                 title="Reports & Analytics"
                 hint="Add your reports/charts widget here"
               />
-              {/* Budgeting & Notifications — teammate fills this */}
-              <ModuleSlot
-                icon={Bell}
-                title="Budgeting & Alerts"
-                hint="Add your budgeting widget here"
-              />
+              {/* Budgeting & Notifications */}
+              <BudgetWidget />
             </div>
           </section>
 

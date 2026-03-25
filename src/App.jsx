@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import FloatingNav from './components/navbar'; // Fixed import path
 import Register from './pages/Register';
@@ -9,6 +9,8 @@ import ForgotPassword from './pages/ForgotPassword';
 import Profile from './pages/Profile';
 import ExpenseCategorization from './pages/ExpenseCategorization';
 import Analytics from './pages/Analytics';
+import ExpenseList from './components/ExpenseList';
+import Budgeting from './pages/Budgeting';
 
 // Pages where navbar should be hidden
 const HIDE_NAVBAR_PATHS = ['/login', '/register', '/forgot-password'];
@@ -56,6 +58,22 @@ function AppContent() {
         }
       />
       <Route
+        path="/dashboard"
+        element={
+          <PrivateRoute>
+            <Dashboard />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/expenses"
+        element={
+          <PrivateRoute>
+            <ExpenseList />
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/expense-categorization"
         element={
           <PrivateRoute>
@@ -68,6 +86,14 @@ function AppContent() {
         element={
           <PrivateRoute>
             <Analytics />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/budgeting"
+        element={
+          <PrivateRoute>
+            <Budgeting />
           </PrivateRoute>
         }
       />
