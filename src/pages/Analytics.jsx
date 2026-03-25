@@ -15,24 +15,10 @@ import {
   BarChart2, PieChart as PieChartIcon, Wallet, Clock,
   ArrowUpRight, ArrowDownRight, Minus
 } from 'lucide-react';
+import { DEFAULT_CATEGORIES, EXPANDED_COLORS as CHART_COLORS } from '../components/expense/expenseConfig';
 
 // ── Color Palette ────────────────────────────────────────────────────────────
-const CHART_COLORS = [
-  '#8B5CF6', '#3B82F6', '#6366F1', '#A78BFA', '#60A5FA',
-  '#818CF8', '#7C3AED', '#4F46E5', '#C4B5FD', '#93C5FD'
-];
-
-// Default categories (fallback if not loaded from Firestore)
-const DEFAULT_CATEGORIES = [
-  { id: 'food',          name: 'Food',          color: '#8B5CF6', icon: '🍔' },
-  { id: 'travel',        name: 'Travel',        color: '#3B82F6', icon: '✈️' },
-  { id: 'rent',          name: 'Rent',          color: '#6366F1', icon: '🏠' },
-  { id: 'utilities',     name: 'Utilities',     color: '#A78BFA', icon: '⚡' },
-  { id: 'entertainment', name: 'Entertainment', color: '#60A5FA', icon: '🎬' },
-  { id: 'shopping',      name: 'Shopping',      color: '#818CF8', icon: '🛍️' },
-  { id: 'health',        name: 'Health',        color: '#7C3AED', icon: '⚕️' },
-  { id: 'transport',     name: 'Transport',     color: '#4F46E5', icon: '🚗' },
-];
+// Redundant local definitions removed to use those from expenseConfig.js
 
 // ══════════════════════════════════════════════════════════════════════════════
 // PURE REPORT FUNCTIONS — modular, no side effects
