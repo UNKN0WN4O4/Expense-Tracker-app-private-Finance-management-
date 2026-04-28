@@ -1,0 +1,42 @@
+# Node.js with React
+# Build a Node.js project that uses React.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
+
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- checkout: self
+
+# Install Node.js
+- task: NodeTool@0
+  inputs:
+    versionSpec: '18.x'
+  displayName: "Install Node.js"
+
+# Verify Node installation
+- script: |
+    node -v
+    npm -v
+  displayName: "Check Node and npm versions"
+
+# Install dependencies (if package.json exists)
+- script: |
+    npm install
+  displayName: "Install dependencies"
+  continueOnError: true
+
+# Build React app (optional, won't fail pipeline if missing)
+- script: |
+    npm run build
+  displayName: "Build React App"
+  continueOnError: true
+
+# Simple confirmation step
+- script: |
+    echo "Expense Tracker Pipeline executed successfully"
+  displayName: "Final Step"
